@@ -1,0 +1,53 @@
+name: Refresh profile stats
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 8 * * *"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/profile-stats.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-profile-stats:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out profile repository
+        uses: actions/checkout@v4
+
+      - name: Generate GitHub profile summary cards
+        uses: vn7n24fzkq/github-profile-summary-cards@release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          USERNAME: ${{ github.repository_owner }}
+          BRANCH_NAME: main
+          UTC_OFFSET: -6
+          AUTO_PUSH: false
+          THEME: github_dark
+          ANIMATION: ""
+
+      - name: Generate contribution streak card
+        uses: DenverCoder1/github-readme-streak-stats@main
+        with:
+          options: user=${{ github.repository_owner }}&theme=dark&hide_border=true&background=0E0E18&ring=FF6B35&fire=00D4FF&currStreakLabel=FF6B35&sideLabels=F0F0FA&dates=8B8B9E&disable_animations=true
+          path: profile/streak.svg
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit refreshed profile assets
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add profile-summary-card-output profile/streak.svg
+          if git diff --cached --quiet; then
+            echo "No profile stat changes to commit."
+            exit 0
+          fi
+          git commit -m "chore: refresh profile stats"
+          git push

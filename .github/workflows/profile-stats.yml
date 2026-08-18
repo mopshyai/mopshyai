@@ -1,6 +1,7 @@
 name: Refresh profile stats
 
-# Generates local SVG assets so the profile README is not dependent on live stats-card services.
+# Cache public stats SVGs in this repository so the profile keeps rendering
+# even if a third-party card service is temporarily unavailable.
 on:
   workflow_dispatch:
   schedule:
@@ -22,30 +23,41 @@ jobs:
       - name: Check out profile repository
         uses: actions/checkout@v4
 
-      - name: Generate GitHub profile summary cards
-        uses: vn7n24fzkq/github-profile-summary-cards@release
+      - name: Fetch fresh public profile cards
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          USERNAME: ${{ github.repository_owner }}
-          BRANCH_NAME: main
-          UTC_OFFSET: -6
-          AUTO_PUSH: false
-          THEME: github_dark
-          ANIMATION: ""
+          PROFILE_USER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          tmp_dir="$(mktemp -d)"
+          mkdir -p profile-summary-card-output/github_dark profile
 
-      - name: Generate contribution streak card
-        uses: DenverCoder1/github-readme-streak-stats@main
-        with:
-          options: user=${{ github.repository_owner }}&theme=dark&hide_border=true&background=0E0E18&ring=FF6B35&fire=00D4FF&currStreakLabel=FF6B35&sideLabels=F0F0FA&dates=8B8B9E&disable_animations=true
-          path: profile/streak.svg
-          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch_svg() {
+            url="$1"
+            output="$2"
+            curl --fail --silent --show-error --location \
+              --retry 3 --retry-delay 3 --retry-all-errors \
+              "$url" -o "$tmp_dir/$output"
+            grep -q '<svg' "$tmp_dir/$output"
+          }
+
+          fetch_svg "https://github-profile-summary-cards.vercel.app/api/cards/profile-details?username=${PROFILE_USER}&theme=github_dark" profile-details.svg
+          fetch_svg "https://github-profile-summary-cards.vercel.app/api/cards/stats?username=${PROFILE_USER}&theme=github_dark" stats.svg
+          fetch_svg "https://github-profile-summary-cards.vercel.app/api/cards/repos-per-language?username=${PROFILE_USER}&theme=github_dark" repos-per-language.svg
+          fetch_svg "https://streak-stats.demolab.com?user=${PROFILE_USER}&theme=dark&hide_border=true&background=0E0E18&ring=FF6B35&fire=00D4FF&currStreakLabel=FF6B35&sideLabels=F0F0FA&dates=8B8B9E&disable_animations=true" streak.svg
+
+          mv "$tmp_dir/profile-details.svg" profile-summary-card-output/github_dark/0-profile-details.svg
+          mv "$tmp_dir/stats.svg" profile-summary-card-output/github_dark/3-stats.svg
+          mv "$tmp_dir/repos-per-language.svg" profile-summary-card-output/github_dark/1-repos-per-language.svg
+          mv "$tmp_dir/streak.svg" profile/streak.svg
 
       - name: Commit refreshed profile assets
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add profile-summary-card-output profile/streak.svg
+          git add profile-summary-card-output/github_dark/0-profile-details.svg \
+                  profile-summary-card-output/github_dark/1-repos-per-language.svg \
+                  profile-summary-card-output/github_dark/3-stats.svg \
+                  profile/streak.svg
           if git diff --cached --quiet; then
             echo "No profile stat changes to commit."
             exit 0

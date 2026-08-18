@@ -1,5 +1,6 @@
 name: Refresh profile stats
 
+# Generates local SVG assets so the profile README is not dependent on live stats-card services.
 on:
   workflow_dispatch:
   schedule:
